@@ -1,0 +1,25 @@
+import pandas as pd
+import seaborn as sns
+import psycopg2
+import matplotlib.pyplot as plt
+
+
+# Пример загрузки данных (замените на ваш источник данных)
+connection = psycopg2.connect("dbname='logging' user='postgres' host='localhost' password='azk8hh'")
+df = pd.read_sql_query('SELECT * FROM log_top;', con=connection)
+
+# Преобразование времени в секунды
+
+#df['time_sec'] = df['time'].apply(lambda x: sum(float(t) * 60 ** i for i, t in enumerate(reversed(x.split(':')))))
+
+# Выбор числовых колонок
+numeric_cols = ['virt', 'res', 'shr', 'cpu', 'mem']
+correlation_matrix = df[numeric_cols].corr()
+
+print("Корреляционная матрица:")
+print(correlation_matrix)
+# Визуализация корреляционной матрицы
+plt.figure(figsize=(10, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.title('Correlation Matrix Heatmap')
+plt.show()

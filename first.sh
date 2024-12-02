@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-#Auto config extractor
+#Auto log extractor
 #Bonch 2024
 #IvanovIKudryavtsev
 conf_date=1
@@ -9,8 +9,9 @@ conf_pid=1
 conf_user=1
 conf_type=1
 conf_data=1
+conf_source="psql"
+log_file_path="/var/log/postgresql/test.txt"
 conf_counter=0
-log_file_path="/var/log/postgresql/postgresql-Mon1.log"
 #sudo su
 #echo "###$(wc -l < $log_file_path)###"
 total=$(wc -l < $log_file_path)
@@ -44,10 +45,12 @@ while read y
 	conf_type="${conf: -1}"
 	elif [ $conf_counter = 7 ]; then
 	conf_data="${conf: -1}"
+	elif [ $conf_counter = 8 ]; then
+	conf_source="${conf: -1}"
 	else
 	echo "Unbelivable"
 	fi
-done < /home/kali/Desktop/config
+done < /home/kali/Desktop/config.txt
 
 DB_NAME="logging"   # Замените на ваше имя базы данных
 DB_USER="postgres"
@@ -57,7 +60,7 @@ TABLE_EXISTS=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM
 # Если таблица не существует, создаем её
 if [ "$TABLE_EXISTS" != "t" ]; then
   echo "Таблица не существует, создаем таблицу '$TABLE_NAME'"
-  psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE TABLE $TABLE_NAME (id SERIAL PRIMARY KEY,date VARCHAR(50),time VARCHAR(50),time_zone VARCHAR(50),pid VARCHAR(50),usr VARCHAR(50),event_type VARCHAR(50),event_data VARCHAR);"
+  psql -U "$DB_USER" -P -d "$DB_NAME" -c "CREATE TABLE $TABLE_NAME (id SERIAL PRIMARY KEY,date VARCHAR(50),time VARCHAR(50),time_zone VARCHAR(50),pid VARCHAR(50),usr VARCHAR(50),event_type VARCHAR(50),event_data VARCHAR);"
 else
   echo "Таблица '$TABLE_NAME' уже существует, Table deleted"
   psql -U "$DB_USER" -d "$DB_NAME" -c "DELETE FROM $TABLE_NAME; ALTER SEQUENCE log_id_seq RESTART WITH 1;"
@@ -65,7 +68,7 @@ fi
 TABLE_EXISTS=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = '$TABLE_NAME_2');")
 # Если таблица не существует, создаем её
 if [ "$TABLE_EXISTS" != "t" ]; then
-  echo "Таблица не существует, создаем таблицу '$TABLE_NAME'"
+  echo "Таблица не существует, создаем таблицу '$TABLE_NAME_2'"
   psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE TABLE $TABLE_NAME_2 (id SERIAL PRIMARY KEY,date VARCHAR(50),time VARCHAR(50),time_zone VARCHAR(50),pid VARCHAR(50),usr VARCHAR(50),event_type VARCHAR(50),event_data VARCHAR);"
 else
   echo "Таблица '$TABLE_NAME_2' уже существует, Table deleted"
@@ -82,20 +85,50 @@ if [ $debug_flag = 0 ]; then
 		corrupted_event_flag=0
 		read -r date time time_zone pid user event_type event_data <<< "$y"
 		#echo ""$i" : $y " | fold -s
-		if ! [ -n "$time" ] || ! [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+		if [ $conf_source = "psql" ] && ! [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && ! [ -n "$time" ] ; then
 			echo "### not usable event $i ###"
-			psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $TABLE_NAME ( event_data ) VALUES (E' $date $time $time_zone $pid $user $event_type $event_data ');"
-			corrupted_event_flag=1
+			psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $TABLE_NAME ( event_data ) VALUES (E' $date $time $time_zone $pid $user $event_type $event_data ');" >/dev/null 2>&1
+			corrupted_event_flag=1 
 		fi
 		if [ $corrupted_event_flag = 0 ]; then
-			if ! [[ $user =~  ^.+@.+$  ]] ; then
+			if ! [[ $user =~  ^.+@.+$  ]] && [ $conf_source = "psql" ]; then
 			event_data="${event_type} ${event_data}"
 			event_type=$user
 			user=' '
 			fi
 			#echo -e " 1: $date \n 2: $time \n 3: $time_zone \n 4: $pid \n 5: $user \n 6: $event_type \n 7: $event_data" #| fold -s
+			
+			if [ $conf_date = 0 ]; then
+			date="-"
+			fi
+			
+			if [ $conf_time = 0 ]; then
+			time="-"
+			fi
+			
+			if [ $conf_time_zone = 0 ]; then
+			time_zone="-"
+			fi
+			
+			if [ $conf_pid = 0 ]; then
+			pid="-"
+			fi
+			
+			if [ $conf_user = 0 ]; then
+			user="-"
+			fi
+			
+			if [ $conf_type = 0 ]; then
+			event_type="-"
+			fi
+			
+			if [ $conf_data = 0 ]; then
+			event_data="-"
+			fi
+			
 			psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $TABLE_NAME ( date, time, time_zone, pid, usr, event_type, event_data) VALUES ('$date', '$time', '$time_zone', '$pid', '$user', '$event_type', '$event_data');"> /dev/null 2>&1
-			if [[ $time =~  ^[0-2][0-9]:[0-5][0-9]:[0-5][0-9]\.[0-9]{3}$ ]] ; then
+			
+			if  [ $conf_time = "1" ] && [ $conf_source = "psql" ] && [[ $time =~  ^[0-2][0-9]:[0-5][0-9]:[0-5][0-9]\.[0-9]{3}$ ]] ; then
 			psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $TABLE_NAME_2 ( date, time, time_zone, pid, usr, event_type, event_data) VALUES ('$date', '$time', '$time_zone', '$pid', '$user', '$event_type', '$event_data');"> /dev/null 2>&1
 			fi
 			#echo "Значения успешно добавлены в таблицу '$TABLE_NAME'"
